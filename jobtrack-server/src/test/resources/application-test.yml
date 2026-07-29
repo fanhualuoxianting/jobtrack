@@ -1,0 +1,20 @@
+# 测试环境配置 - 使用 H2 内存数据库
+spring:
+  datasource:
+    url: jdbc:h2:mem:jobtrack_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-test.sql
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+logging:
+  level:
+    com.fanhua.jobtrack: DEBUG

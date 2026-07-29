@@ -1,0 +1,42 @@
+# === Java / Maven ===
+jobtrack-server/target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+
+# === IDE ===
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# === Node / Frontend ===
+jobtrack-web/node_modules/
+jobtrack-web/dist/
+*.local
+
+# === Environment ===
+.env
+!.env.example
+
+# === OS ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# === Logs ===
+*.log
+logs/
+
+# === Data ===
+data/
+jobtrack_mysql_data/
+jobtrack_redis_data/
+
+# === Uploads ===
+uploads/
