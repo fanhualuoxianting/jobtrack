@@ -1,0 +1,51 @@
+name: Docker Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare production env
+        shell: bash
+        run: |
+          cp .env.production.example .env.production
+          sed -i 's/CHANGE_ME_database_password/jobtrack_test_password/' .env.production
+          sed -i 's/CHANGE_ME_root_password/jobtrack_root_test_password/' .env.production
+          sed -i 's/CHANGE_ME_redis_password/jobtrack_redis_test_password/' .env.production
+          sed -i 's/CHANGE_ME_use_at_least_32_random_bytes_here/01234567890123456789012345678901/' .env.production
+
+      - name: Start production compose
+        run: docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+
+      - name: Wait for health
+        shell: bash
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/actuator/health | grep -q UP; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose --env-file .env.production -f docker-compose.prod.yml logs
+          exit 1
+
+      - name: Run smoke test
+        shell: pwsh
+        run: ./scripts/smoke-test.ps1 -BaseUrl http://localhost:8080
+
+      - name: Collect logs on failure
+        if: failure()
+        run: docker compose --env-file .env.production -f docker-compose.prod.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose --env-file .env.production -f docker-compose.prod.yml down -v
