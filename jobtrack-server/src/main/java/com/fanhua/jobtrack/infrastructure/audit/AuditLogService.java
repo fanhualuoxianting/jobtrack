@@ -1,64 +1,59 @@
 package com.fanhua.jobtrack.infrastructure.audit;
 
-import com.fanhua.jobtrack.infrastructure.audit.entity.AuditLog;
-import com.fanhua.jobtrack.infrastructure.audit.mapper.AuditLogMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * 业务审计日志服务：异步落库、尽力而为。
- * 审计写入失败只记录 ERROR，绝不影响主业务事务。
+ * 业务审计日志服务。
+ *
+ * 两种写入时机：
+ * - record：立即异步写入。用于"动作确实发生了"的失败/攻击类审计（登录失败、
+ *   令牌重放等），与业务事务成败无关。
+ * - recordAfterCommit：当前事务提交成功后才写入。用于成功类审计（创建、修改、
+ *   登录成功等），避免业务回滚后仍留下"操作成功"的假记录；
+ *   无活动事务时退化为立即异步写入。
  */
 @Slf4j
 @Service
 public class AuditLogService {
 
-    private final AuditLogMapper auditLogMapper;
+    private final AuditLogWriter writer;
 
-    public AuditLogService(AuditLogMapper auditLogMapper) {
-        this.auditLogMapper = auditLogMapper;
+    public AuditLogService(AuditLogWriter writer) {
+        this.writer = writer;
     }
 
-    /**
-     * 记录一条审计日志。
-     * 注意：异步线程不共享请求 MDC，traceId 在调用方线程先取出再传入。
-     */
-    @Async
+    /** 事务提交后记录成功类审计 */
+    public void recordAfterCommit(String action, Long userId, String resourceType, String resourceId,
+                                  boolean success, String detail, String ip, String userAgent, String traceId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    writer.writeAsync(action, userId, resourceType, resourceId, success, detail, ip, userAgent, traceId);
+                }
+            });
+        } else {
+            writer.writeAsync(action, userId, resourceType, resourceId, success, detail, ip, userAgent, traceId);
+        }
+    }
+
+    /** 立即异步记录（失败/攻击类事件；不带事务关联） */
     public void record(String action, Long userId, String resourceType, String resourceId,
                        boolean success, String detail, HttpServletRequest request) {
-        record(action, userId, resourceType, resourceId, success, detail,
+        writer.writeAsync(action, userId, resourceType, resourceId, success, detail,
                 request == null ? null : ClientIpUtil.getClientIp(request),
                 request == null ? null : ClientIpUtil.getUserAgent(request),
                 MDC.get("traceId"));
     }
 
-    @Async
+    /** 立即异步记录 */
     public void record(String action, Long userId, String resourceType, String resourceId,
                        boolean success, String detail, String ip, String userAgent, String traceId) {
-        try {
-            AuditLog logEntry = new AuditLog();
-            logEntry.setUserId(userId);
-            logEntry.setAction(action);
-            logEntry.setResourceType(resourceType);
-            logEntry.setResourceId(resourceId);
-            logEntry.setResult(success ? "SUCCESS" : "FAIL");
-            logEntry.setDetail(truncate(detail, 500));
-            logEntry.setIpAddress(ip);
-            logEntry.setUserAgent(truncate(userAgent, 500));
-            logEntry.setTraceId(traceId);
-            auditLogMapper.insert(logEntry);
-        } catch (Exception e) {
-            log.error("审计日志写入失败: action={}, userId={}, error={}", action, userId, e.getMessage());
-        }
-    }
-
-    private String truncate(String value, int max) {
-        if (value == null) {
-            return null;
-        }
-        return value.length() <= max ? value : value.substring(0, max);
+        writer.writeAsync(action, userId, resourceType, resourceId, success, detail, ip, userAgent, traceId);
     }
 }

@@ -124,7 +124,7 @@ public class AuthServiceImpl implements AuthService {
         setting.setUserId(user.getId());
         userSettingMapper.insert(setting);
 
-        auditLogService.record(AuditAction.REGISTER, user.getId(),
+        auditLogService.recordAfterCommit(AuditAction.REGISTER, user.getId(),
                 AuditAction.RES_USER, String.valueOf(user.getId()), true, "用户注册",
                 null, null, org.slf4j.MDC.get("traceId"));
 
@@ -187,7 +187,7 @@ public class AuthServiceImpl implements AuthService {
                 user.getId(), request.getDeviceName(), userAgent, ip);
         AuthTokenVO tokenVO = buildTokenVO(user, issued.sessionId());
 
-        auditLogService.record(AuditAction.LOGIN_SUCCESS, user.getId(),
+        auditLogService.recordAfterCommit(AuditAction.LOGIN_SUCCESS, user.getId(),
                 AuditAction.RES_AUTH_SESSION, issued.sessionId(), true, "登录成功",
                 ip, userAgent, org.slf4j.MDC.get("traceId"));
 
@@ -216,7 +216,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         AuthTokenVO tokenVO = buildTokenVO(user, rotated.sessionId());
-        auditLogService.record(AuditAction.REFRESH_TOKEN, user.getId(),
+        auditLogService.recordAfterCommit(AuditAction.REFRESH_TOKEN, user.getId(),
                 AuditAction.RES_AUTH_SESSION, rotated.sessionId(), true, "令牌刷新",
                 ClientIpUtil.getClientIp(httpRequest), ClientIpUtil.getUserAgent(httpRequest),
                 org.slf4j.MDC.get("traceId"));
@@ -226,7 +226,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logout(Long userId, String sessionId) {
         sessionService.revoke(sessionId);
-        auditLogService.record(AuditAction.LOGOUT, userId,
+        auditLogService.recordAfterCommit(AuditAction.LOGOUT, userId,
                 AuditAction.RES_AUTH_SESSION, sessionId, true, "注销当前设备",
                 null, null, org.slf4j.MDC.get("traceId"));
     }
@@ -235,7 +235,7 @@ public class AuthServiceImpl implements AuthService {
     public void logoutAll(Long userId, String currentSessionId, boolean keepCurrent) {
         String except = keepCurrent ? currentSessionId : null;
         sessionService.revokeAll(userId, except);
-        auditLogService.record(AuditAction.LOGOUT_ALL, userId,
+        auditLogService.recordAfterCommit(AuditAction.LOGOUT_ALL, userId,
                 AuditAction.RES_AUTH_SESSION, currentSessionId, true,
                 keepCurrent ? "注销除当前设备外全部设备" : "注销全部设备",
                 null, null, org.slf4j.MDC.get("traceId"));
@@ -264,7 +264,7 @@ public class AuthServiceImpl implements AuthService {
             // 会话不存在或不属于当前用户，统一按不存在处理，避免泄露他人会话存在性
             throw new NotFoundException("会话不存在");
         }
-        auditLogService.record(AuditAction.SESSION_REVOKED, userId,
+        auditLogService.recordAfterCommit(AuditAction.SESSION_REVOKED, userId,
                 AuditAction.RES_AUTH_SESSION, sessionId, true, "注销指定设备",
                 null, null, org.slf4j.MDC.get("traceId"));
     }

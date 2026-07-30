@@ -6,6 +6,7 @@ import com.fanhua.jobtrack.common.exception.ConflictException;
 import com.fanhua.jobtrack.common.exception.ForbiddenException;
 import com.fanhua.jobtrack.common.exception.LockedException;
 import com.fanhua.jobtrack.common.exception.NotFoundException;
+import com.fanhua.jobtrack.common.exception.PayloadTooLargeException;
 import com.fanhua.jobtrack.common.exception.TooManyRequestsException;
 import com.fanhua.jobtrack.common.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,6 +49,7 @@ public class GlobalExceptionHandler {
             case UnauthorizedException e -> HttpStatus.UNAUTHORIZED;
             case LockedException e -> HttpStatus.LOCKED;
             case TooManyRequestsException e -> HttpStatus.TOO_MANY_REQUESTS;
+            case PayloadTooLargeException e -> HttpStatus.PAYLOAD_TOO_LARGE;
             default -> HttpStatus.BAD_REQUEST;
         };
 

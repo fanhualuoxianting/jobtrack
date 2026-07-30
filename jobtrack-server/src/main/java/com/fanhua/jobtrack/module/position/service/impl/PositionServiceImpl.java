@@ -119,7 +119,10 @@ public class PositionServiceImpl implements PositionService {
         assertNoDuplicate(userId, request, id);
 
         applyUpsert(position, request);
-        int affected = positionMapper.updateById(position);
+        // UPDATE 语句本身携带 id + user_id，乐观锁拦截器附加 version 条件
+        int affected = positionMapper.update(position, new LambdaQueryWrapper<Position>()
+                .eq(Position::getId, id)
+                .eq(Position::getUserId, userId));
         if (affected == 0) {
             throw new ConflictException(ErrorCode.OPTIMISTIC_LOCK_CONFLICT.getCode(),
                     "记录已被其他请求修改，请刷新后重试");
@@ -133,7 +136,10 @@ public class PositionServiceImpl implements PositionService {
     public PositionDetailVO changeStatus(Long userId, Long id, PositionStatusRequest request) {
         Position position = getOwnedPosition(userId, id);
         position.setStatus(request.getStatus());
-        int affected = positionMapper.updateById(position);
+        // 状态变更同样走 id + user_id 条件 UPDATE
+        int affected = positionMapper.update(position, new LambdaQueryWrapper<Position>()
+                .eq(Position::getId, id)
+                .eq(Position::getUserId, userId));
         if (affected == 0) {
             throw new ConflictException(ErrorCode.OPTIMISTIC_LOCK_CONFLICT.getCode(),
                     "记录已被其他请求修改，请刷新后重试");
@@ -291,7 +297,8 @@ public class PositionServiceImpl implements PositionService {
     }
 
     private void audit(String action, Long userId, Long positionId, String detail) {
-        auditLogService.record(action, userId, "POSITION", String.valueOf(positionId), true, detail,
+        // 成功类审计：事务提交后才写入
+        auditLogService.recordAfterCommit(action, userId, "POSITION", String.valueOf(positionId), true, detail,
                 null, null, org.slf4j.MDC.get("traceId"));
     }
 }

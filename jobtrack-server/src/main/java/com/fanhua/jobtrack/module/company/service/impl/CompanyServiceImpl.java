@@ -103,8 +103,11 @@ public class CompanyServiceImpl implements CompanyService {
             assertNameAvailable(userId, normalizedName, id);
         }
         applyUpsert(company, request, normalizedName);
-        // 乐观锁：version 由 MyBatis-Plus 拦截器处理，并发覆盖命中影响行数 0
-        int affected = companyMapper.updateById(company);
+        // UPDATE 语句本身同时携带 id + user_id（乐观锁拦截器附加 version 条件），
+        // 不依赖"先查后写"的信任链；受影响行数为 0 时区分并发冲突与不存在
+        int affected = companyMapper.update(company, new LambdaQueryWrapper<Company>()
+                .eq(Company::getId, id)
+                .eq(Company::getUserId, userId));
         if (affected == 0) {
             throw new ConflictException(ErrorCode.OPTIMISTIC_LOCK_CONFLICT.getCode(),
                     "记录已被其他请求修改，请刷新后重试");
@@ -207,7 +210,8 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     private void audit(String action, Long userId, Long companyId, String detail) {
-        auditLogService.record(action, userId, "COMPANY", String.valueOf(companyId), true, detail,
+        // 成功类审计：事务提交后才写入，避免回滚后残留假记录
+        auditLogService.recordAfterCommit(action, userId, "COMPANY", String.valueOf(companyId), true, detail,
                 null, null, org.slf4j.MDC.get("traceId"));
     }
 }
