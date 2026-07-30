@@ -164,6 +164,11 @@ public class ApplicationServiceImpl implements ApplicationService {
     }
 
     @Override
+    public ApplicationStatus currentStatus(Long userId, Long id) {
+        return parseStatus(getOwned(userId, id).getStatus());
+    }
+
+    @Override
     @Transactional
     public ApplicationVO update(Long userId, Long id, ApplicationUpdateRequest request) {
         JobApplication current = getOwned(userId, id);

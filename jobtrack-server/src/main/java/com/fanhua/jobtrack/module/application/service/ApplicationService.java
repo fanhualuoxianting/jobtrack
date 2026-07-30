@@ -15,6 +15,7 @@ public interface ApplicationService {
     ApplicationVO create(Long userId, ApplicationCreateRequest request);
     PageResult<ApplicationVO> page(Long userId, ApplicationQueryRequest request);
     ApplicationVO detail(Long userId, Long id);
+    ApplicationStatus currentStatus(Long userId, Long id);
     ApplicationVO update(Long userId, Long id, ApplicationUpdateRequest request);
     ApplicationVO transition(Long userId, Long id, ApplicationTransitionRequest request);
     List<ApplicationTimelineVO> timeline(Long userId, Long id);
