@@ -1,20 +1,23 @@
-# 测试环境配置 - 使用 H2 内存数据库
+# 测试环境配置
+# 数据源与 Redis 地址由 Testcontainers 动态注入（见 AbstractIntegrationTest），
+# SQL 通过 Flyway 迁移，保证测试与开发环境迁移脚本一致。
 spring:
-  datasource:
-    url: jdbc:h2:mem:jobtrack_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-  sql:
-    init:
-      mode: always
-      schema-locations: classpath:schema-test.sql
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
-  data:
-    redis:
-      host: localhost
-      port: 6379
+jobtrack:
+  jwt:
+    # 测试专用密钥，仅用于自动化测试
+    secret: test-only-secret-for-integration-tests-0123456789
+    access-ttl-minutes: 30
+    refresh-ttl-days: 7
+  auth:
+    # 测试中锁定阈值调低，便于快速触发锁定场景
+    login-fail-max: 3
+    login-fail-window-minutes: 10
+    login-lock-minutes: 15
 
 logging:
   level:
-    com.fanhua.jobtrack: DEBUG
+    com.fanhua.jobtrack: INFO

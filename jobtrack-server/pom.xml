@@ -22,7 +22,21 @@
         <mybatis-plus.version>3.5.12</mybatis-plus.version>
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.8.9</springdoc.version>
+        <!-- Testcontainers 2.x：修复 Docker Engine 29（最低 API 1.44）兼容性 -->
+        <testcontainers.version>2.0.3</testcontainers.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Spring Boot Starters -->
@@ -64,6 +78,16 @@
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway 数据库迁移 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
         </dependency>
 
         <!-- JWT -->
@@ -113,6 +137,17 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers：真实 MySQL / Redis 集成测试（2.x 模块带 testcontainers- 前缀） -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-mysql</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -17,6 +17,14 @@ spring:
     time-zone: Asia/Shanghai
     serialization:
       write-dates-as-timestamps: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # 基线置 0：对已有数据的库首次迁移时仍执行 V1（脚本全部幂等 IF NOT EXISTS），
+    # 避免默认基线 1 导致 V1 被跳过、新表缺失
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
@@ -47,3 +55,17 @@ management:
 jobtrack:
   frontend-origin: ${JOBTRACK_FRONTEND_ORIGIN:http://localhost:5173}
   file-root: ${JOBTRACK_FILE_ROOT:./data/uploads}
+  jwt:
+    # 生产环境必须通过 JWT_SECRET 环境变量注入至少 32 字节随机值，禁止写死进 Git
+    secret: ${JWT_SECRET:}
+    access-ttl-minutes: ${JWT_ACCESS_TTL_MINUTES:30}
+    refresh-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
+  auth:
+    # Refresh Token Cookie 配置；Secure 在 HTTPS 环境通过 JOBTRACK_COOKIE_SECURE=true 开启
+    cookie-name: JOBTRACK_RT
+    cookie-secure: ${JOBTRACK_COOKIE_SECURE:false}
+    cookie-path: /api/v1/auth
+    # 登录失败限流：窗口内失败达到上限后锁定
+    login-fail-max: ${JOBTRACK_LOGIN_FAIL_MAX:5}
+    login-fail-window-minutes: ${JOBTRACK_LOGIN_FAIL_WINDOW_MINUTES:10}
+    login-lock-minutes: ${JOBTRACK_LOGIN_LOCK_MINUTES:15}

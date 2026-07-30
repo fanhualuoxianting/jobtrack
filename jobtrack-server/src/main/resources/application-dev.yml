@@ -17,7 +17,17 @@ spring:
       password: ${REDIS_PASSWORD:}
       timeout: 5000ms
 
+  # 开发环境加载演示数据迁移（V2）
+  flyway:
+    locations: classpath:db/migration,classpath:db/demo
+
+jobtrack:
+  jwt:
+    # 仅本地开发的兜底密钥，禁止用于生产；生产必须提供 JWT_SECRET 环境变量
+    secret: ${JWT_SECRET:dev-only-insecure-secret-do-not-use-in-prod-0123456789abcdef}
+
 logging:
   level:
     com.fanhua.jobtrack: DEBUG
-    org.springframework.security: DEBUG
+    org.springframework.security: INFO
+    org.flywaydb: INFO

@@ -4,7 +4,10 @@ import com.fanhua.jobtrack.common.api.Result;
 import com.fanhua.jobtrack.common.exception.BusinessException;
 import com.fanhua.jobtrack.common.exception.ConflictException;
 import com.fanhua.jobtrack.common.exception.ForbiddenException;
+import com.fanhua.jobtrack.common.exception.LockedException;
 import com.fanhua.jobtrack.common.exception.NotFoundException;
+import com.fanhua.jobtrack.common.exception.TooManyRequestsException;
+import com.fanhua.jobtrack.common.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -42,6 +45,9 @@ public class GlobalExceptionHandler {
             case NotFoundException e -> HttpStatus.NOT_FOUND;
             case ForbiddenException e -> HttpStatus.FORBIDDEN;
             case ConflictException e -> HttpStatus.CONFLICT;
+            case UnauthorizedException e -> HttpStatus.UNAUTHORIZED;
+            case LockedException e -> HttpStatus.LOCKED;
+            case TooManyRequestsException e -> HttpStatus.TOO_MANY_REQUESTS;
             default -> HttpStatus.BAD_REQUEST;
         };
 

@@ -47,3 +47,31 @@ export interface UserInfo {
   role: 'USER' | 'ADMIN'
   lastLoginAt: string | null
 }
+
+/** 登录/刷新令牌响应数据 */
+export interface AuthTokenData {
+  accessToken: string
+  tokenType: string
+  expiresIn: number
+  user: UserInfo
+}
+
+/** 注册响应数据 */
+export interface RegisterResult {
+  userId: number
+  username: string
+  email: string
+  nickname: string
+}
+
+/** 登录会话信息 */
+export interface SessionInfo {
+  sessionId: string
+  deviceName: string | null
+  userAgent: string | null
+  ipAddress: string | null
+  createdAt: string
+  lastActiveAt: string
+  expiresAt: string
+  current: boolean
+}

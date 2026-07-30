@@ -13,7 +13,8 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - jobtrack_mysql_data:/var/lib/mysql
-      - ./sql:/docker-entrypoint-initdb.d:ro
+      # 数据库结构与演示数据由应用端 Flyway 迁移接管（src/main/resources/db/），
+      # 原 sql/ 目录仅保留为参考资料，不再通过 docker-entrypoint-initdb.d 初始化
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-change_root_password}"]
       interval: 10s
