@@ -23,7 +23,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <springdoc.version>2.8.9</springdoc.version>
         <!-- Testcontainers 2.x：修复 Docker Engine 29（最低 API 1.44）兼容性 -->
-        <testcontainers.version>2.0.3</testcontainers.version>
+        <testcontainers.version>2.0.5</testcontainers.version>
     </properties>
 
     <dependencyManagement>
