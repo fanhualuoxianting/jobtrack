@@ -25,6 +25,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import static org.springframework.transaction.support.TransactionSynchronization.STATUS_COMMITTED;
+
 /**
  * 简历服务实现。
  *
@@ -65,6 +67,7 @@ public class ResumeServiceImpl implements ResumeService {
         }
 
         Path tempPath = null;
+        String storageKey = null;
         try {
             // 1. 流式落盘到临时目录（未通过校验前绝不进入正式目录）
             tempPath = storageService.saveTemporary(file);
@@ -99,11 +102,15 @@ public class ResumeServiceImpl implements ResumeService {
             boolean firstResume = resumeMapper.selectCount(
                     new LambdaQueryWrapper<Resume>().eq(Resume::getUserId, userId)) == 0;
             resume.setIsDefault(firstResume ? 1 : 0);
-            String storageKey = storageService.generateStorageKey(userId, verified.extension());
+            storageKey = storageService.generateStorageKey(userId, verified.extension());
             resume.setStorageKey(storageKey);
             resumeMapper.insert(resume); // DB 失败 → 异常 → 事务回滚 → 临时文件统一清理
 
-            // 6. 移入正式目录；失败即回滚数据库插入，保证两端一致性
+            // 6. 在移动前注册回滚补偿：覆盖“移动成功后提交/事务失败”的窗口。
+            //    afterCompletion 会在事务最终回滚时删除正式文件，避免孤儿文件。
+            registerFinalFileRollbackCleanup(storageKey);
+
+            // 7. 移入正式目录；失败即回滚数据库插入，保证两端一致性
             storageService.moveToFinal(tempPath, storageKey);
 
             audit("RESUME_UPLOAD", userId, resume.getId(), "上传简历版本");
@@ -243,6 +250,28 @@ public class ResumeServiceImpl implements ResumeService {
         } catch (IOException e) {
             log.error("临时文件清理失败: {}, error={}", tempPath, e.getMessage());
         }
+    }
+
+    private void registerFinalFileRollbackCleanup(String storageKey) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.warn("上传简历未发现活动事务，无法登记正式文件回滚补偿: {}", storageKey);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) {
+                    return;
+                }
+                try {
+                    storageService.delete(storageKey);
+                    log.info("简历事务回滚，已清理正式文件: {}", storageKey);
+                } catch (IOException | SecurityException e) {
+                    log.error("简历事务回滚后正式文件清理失败，需人工介入: {}, error={}",
+                            storageKey, e.getMessage(), e);
+                }
+            }
+        });
     }
 
     private void audit(String action, Long userId, Long resumeId, String detail) {

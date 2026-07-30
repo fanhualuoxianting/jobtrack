@@ -3,6 +3,9 @@ package com.fanhua.jobtrack.module.resume;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fanhua.jobtrack.AbstractIntegrationTest;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
@@ -22,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -31,6 +36,9 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -52,6 +60,12 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private com.fanhua.jobtrack.infrastructure.file.FileStorageService storageService;
+
+    @MockBean
+    private com.fanhua.jobtrack.infrastructure.audit.AuditLogService auditLogService;
 
     private String suffix;
     private String tokenA;
@@ -76,8 +90,19 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
 
     // ---------- 测试素材 ----------
 
-    private byte[] pdfBytes() {
-        return "%PDF-1.7\n1 0 obj<</Type/Catalog>>\nendobj\n%%EOF\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+    private byte[] pdfBytes() throws Exception {
+        return pdfBytes("JobTrack resume");
+    }
+
+    private byte[] pdfBytes(String marker) throws Exception {
+        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            document.addPage(new PDPage());
+            PDDocumentInformation information = new PDDocumentInformation();
+            information.setTitle(marker);
+            document.setDocumentInformation(information);
+            document.save(output);
+            return output.toByteArray();
+        }
     }
 
     private byte[] docxBytes() throws Exception {
@@ -191,6 +216,17 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("文件头正确但 PDF 结构损坏时拒绝")
+    void corruptedPdfStructureRejected() throws Exception {
+        mockMvc.perform(multipart("/api/v1/resumes")
+                        .file(new MockMultipartFile("file", "broken.pdf", "application/pdf",
+                                "%PDF-1.7\nthis is not a PDF object table\n%%EOF".getBytes()))
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RESUME_FILE_TYPE_UNSUPPORTED"));
+    }
+
+    @Test
     @DisplayName("伪造 Content-Type 拒绝（声明与真实不一致）")
     void forgedContentTypeRejected() throws Exception {
         mockMvc.perform(multipart("/api/v1/resumes")
@@ -259,9 +295,10 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("同用户重复上传相同内容返回 409")
     void duplicateContentRejected() throws Exception {
-        uploadResume(tokenA, "简历.pdf", "application/pdf", pdfBytes());
+        byte[] content = pdfBytes();
+        uploadResume(tokenA, "简历.pdf", "application/pdf", content);
         mockMvc.perform(multipart("/api/v1/resumes")
-                        .file(new MockMultipartFile("file", "换个名字.pdf", "application/pdf", pdfBytes()))
+                        .file(new MockMultipartFile("file", "换个名字.pdf", "application/pdf", content))
                         .header("Authorization", "Bearer " + tokenA))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("RESUME_DUPLICATE"));
@@ -312,8 +349,7 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("设置默认简历：旧默认自动取消")
     void setDefaultExclusive() throws Exception {
         long first = uploadResume(tokenA, "v1.pdf", "application/pdf", pdfBytes());
-        long second = uploadResume(tokenA, "v2.pdf", "application/pdf",
-                ("%PDF-1.7 altered content for distinct hash\n%%EOF").getBytes());
+        long second = uploadResume(tokenA, "v2.pdf", "application/pdf", pdfBytes("v2"));
 
         mockMvc.perform(put("/api/v1/resumes/" + second + "/default").header("Authorization", "Bearer " + tokenA))
                 .andExpect(status().isOk())
@@ -329,8 +365,8 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("并发设置默认简历：最终仍只有一条默认")
     void concurrentSetDefaultStillUnique() throws Exception {
         long id1 = uploadResume(tokenA, "c1.pdf", "application/pdf", pdfBytes());
-        long id2 = uploadResume(tokenA, "c2.pdf", "application/pdf", ("%PDF-2.0 different\n%%EOF").getBytes());
-        long id3 = uploadResume(tokenA, "c3.pdf", "application/pdf", ("%PDF-3.0 unique!!\n%%EOF").getBytes());
+        long id2 = uploadResume(tokenA, "c2.pdf", "application/pdf", pdfBytes("c2"));
+        long id3 = uploadResume(tokenA, "c3.pdf", "application/pdf", pdfBytes("c3"));
         Long userId = jdbcTemplate.queryForObject(
                 "SELECT id FROM jt_user WHERE username = ?", Long.class, "ra_" + suffix);
 
@@ -382,6 +418,46 @@ class ResumeIntegrationTest extends AbstractIntegrationTest {
         Thread.sleep(300); // 等待 finally 清理
         long after = Files.exists(tmpDir) ? Files.list(tmpDir).count() : 0;
         assertEquals(before, after, "数据库失败不应残留临时文件");
+    }
+
+    @Test
+    @DisplayName("正式文件移动成功后事务回滚会删除正式文件且不留数据库记录")
+    void finalFileCleanedWhenTransactionRollsBackAfterMove() throws Exception {
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM jt_user WHERE username = ?", Long.class, "ra_" + suffix);
+        long beforeRecords = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jt_resume WHERE user_id = ? AND deleted = 0", Long.class, userId);
+        Path tmpDir = testFileRoot.resolve(".tmp");
+        long beforeTemp = Files.exists(tmpDir) ? Files.list(tmpDir).count() : 0;
+        Set<Path> beforeFiles;
+        try (var files = Files.walk(testFileRoot)) {
+            beforeFiles = files.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toSet());
+        }
+
+        doAnswer(invocation -> {
+            throw new IllegalStateException("forced transaction rollback after move");
+        }).when(auditLogService).recordAfterCommit(
+                org.mockito.ArgumentMatchers.eq("RESUME_UPLOAD"), any(), any(), any(),
+                org.mockito.ArgumentMatchers.anyBoolean(), any(), any(), any(), any());
+
+        mockMvc.perform(multipart("/api/v1/resumes")
+                        .file(new MockMultipartFile("file", "rollback.pdf", "application/pdf", pdfBytes("rollback")))
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isInternalServerError());
+
+        Thread.sleep(300);
+        long afterRecords = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jt_resume WHERE user_id = ? AND deleted = 0", Long.class, userId);
+        long afterTemp = Files.exists(tmpDir) ? Files.list(tmpDir).count() : 0;
+        assertEquals(beforeRecords, afterRecords, "事务回滚后不应保留简历记录");
+        assertEquals(beforeTemp, afterTemp, "事务回滚后不应保留临时文件");
+
+        try (var files = Files.walk(testFileRoot)) {
+            Set<Path> afterFiles = files.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toSet());
+            assertEquals(beforeFiles, afterFiles, "事务回滚后不应新增正式目录孤儿文件");
+        } finally {
+            reset(auditLogService);
+        }
     }
 
     @Test

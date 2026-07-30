@@ -18,7 +18,7 @@ public interface ResumeMapper extends BaseMapper<Resume> {
      * 设置默认简历前锁定该用户全部未删除简历行（串行化并发设置请求）。
      * 简历属低频小集合，行锁代价可忽略，换取并发下默认唯一性。
      */
-    @Select("SELECT id FROM jt_resume WHERE user_id = #{userId} AND deleted = 0 FOR UPDATE")
+    @Select("SELECT id FROM jt_resume WHERE user_id = #{userId} AND deleted = 0 ORDER BY id FOR UPDATE")
     java.util.List<Long> lockUserResumeIdsForUpdate(@Param("userId") Long userId);
 
     /** 清除用户原默认简历 */

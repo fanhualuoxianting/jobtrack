@@ -3,12 +3,15 @@ package com.fanhua.jobtrack.infrastructure.file;
 import com.fanhua.jobtrack.common.enums.ErrorCode;
 import com.fanhua.jobtrack.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -32,6 +35,11 @@ public class FileValidationService {
 
     private static final String PDF_MAGIC = "%PDF-";
     private static final byte[] ZIP_MAGIC = {0x50, 0x4B, 0x03, 0x04};
+    private static final int MAX_ZIP_ENTRIES = 1_000;
+    private static final long MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES = 20L * 1024 * 1024;
+    private static final long MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_ZIP_COMPRESSION_RATIO = 200L;
+    private static final long COMPRESSION_RATIO_GRACE_BYTES = 1024L * 1024;
 
     /** 服务端判定结果：真实类型 + 标准 MIME + 归一扩展名 */
     public record VerifiedFile(String kind, String mimeType, String extension) {
@@ -64,6 +72,7 @@ public class FileValidationService {
                 if (!startsWithText(head, PDF_MAGIC)) {
                     throw unsupported("文件内容与 PDF 格式不符");
                 }
+                validatePdfStructure(tempPath);
                 result = new VerifiedFile("PDF", "application/pdf", "pdf");
             } else if ("docx".equals(extension)) {
                 if (!startsWithBytes(head, ZIP_MAGIC) || !isRealDocx(tempPath)) {
@@ -94,20 +103,71 @@ public class FileValidationService {
         }
     }
 
-    /** 校验 ZIP 内部存在 DOCX 必需结构（拦截普通压缩包改名） */
+    /**
+     * PDFBox 深度解析，拒绝只有文件头、但无法解析目录/对象结构的伪 PDF。
+     */
+    private void validatePdfStructure(Path path) {
+        try (PDDocument ignored = Loader.loadPDF(path.toFile())) {
+            // 解析成功即代表 PDFBox 能读取基本文档结构；不需要把内容读入内存。
+        } catch (IOException | RuntimeException e) {
+            log.debug("PDF 深度解析失败: {}", e.getMessage());
+            throw unsupported("PDF 文件结构损坏或无法解析");
+        }
+    }
+
+    /** 校验 ZIP 内部结构并限制解压资源（拦截普通 ZIP 改名、ZIP Bomb 和路径穿越） */
     private boolean isRealDocx(Path path) {
         Set<String> entries = new HashSet<>();
+        long totalUncompressed = 0;
+        int entryCount = 0;
         try (InputStream in = Files.newInputStream(path);
              ZipInputStream zip = new ZipInputStream(in)) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
+                if (++entryCount > MAX_ZIP_ENTRIES || !isSafeZipEntryName(entry.getName())) {
+                    return false;
+                }
                 entries.add(entry.getName());
+                long entryBytes = 0;
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = zip.read(buffer)) != -1) {
+                    entryBytes += read;
+                    totalUncompressed += read;
+                    if (entryBytes > MAX_ZIP_ENTRY_UNCOMPRESSED_BYTES
+                            || totalUncompressed > MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES) {
+                        return false;
+                    }
+                    long compressedSize = entry.getCompressedSize();
+                    if (compressedSize > 0
+                            && entryBytes > compressedSize * MAX_ZIP_COMPRESSION_RATIO + COMPRESSION_RATIO_GRACE_BYTES) {
+                        return false;
+                    }
+                }
                 if (entries.contains("[Content_Types].xml") && entries.contains("word/document.xml")) {
                     return true;
                 }
             }
             return false;
         } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean isSafeZipEntryName(String name) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        String normalized = name.replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:.*")
+                || normalized.contains("/../") || normalized.startsWith("../")
+                || normalized.endsWith("/..") || ".".equals(normalized)) {
+            return false;
+        }
+        try {
+            Path path = Paths.get(normalized).normalize();
+            return !path.isAbsolute() && !path.startsWith("..");
+        } catch (RuntimeException e) {
             return false;
         }
     }
