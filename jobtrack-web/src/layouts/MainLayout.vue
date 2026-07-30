@@ -60,6 +60,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, Bell, UserFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchUnreadCount, markAllNotificationsRead, markNotificationRead, pageNotifications } from '@/api/notification'
+import { parseNotificationSseBlock } from '@/utils/notification-sse'
 import type { ReminderInfo } from '@/types'
 import { useAuthStore } from '@/stores/auth'
 
@@ -89,7 +90,7 @@ async function startSse() {
     while (true) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const blocks = buffer.split('\n\n'); buffer = blocks.pop() || ''; blocks.forEach(handleSseBlock) }
   } catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) scheduleSseReconnect() } finally { sseConnected.value = false; sseAbort = null; if (authStore.accessToken) scheduleSseReconnect() }
 }
-function handleSseBlock(block: string) { const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n'); if (!data) return; try { const event = JSON.parse(data) as { title?: string }; if (event.title) { ElMessage.info(`新通知：${event.title}`); void loadUnread(); if (notificationVisible.value) void loadNotifications() } } catch { /* heartbeat or malformed event is ignored */ } }
+function handleSseBlock(block: string) { const event = parseNotificationSseBlock(block); if (event?.title) { ElMessage.info(`新通知：${event.title}`); void loadUnread(); if (notificationVisible.value) void loadNotifications() } }
 function formatDateTime(value: string | null): string { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-' }
 function stopSse() { if (reconnectTimer != null) { window.clearTimeout(reconnectTimer); reconnectTimer = null } sseAbort?.abort(); sseAbort = null; sseConnected.value = false }
 
