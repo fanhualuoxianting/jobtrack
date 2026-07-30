@@ -28,6 +28,39 @@ export type ApplicationStatus =
   | 'WITHDRAWN'
   | 'CLOSED'
 
+export interface ApplicationInfo {
+  id: number
+  companyId: number
+  companyName: string | null
+  positionId: number
+  positionTitle: string | null
+  resumeId: number | null
+  resumeVersionName: string | null
+  status: ApplicationStatus
+  priority: 'LOW' | 'MEDIUM' | 'HIGH'
+  source: string | null
+  appliedAt: string | null
+  referralName: string | null
+  nextAction: string | null
+  nextActionAt: string | null
+  note: string | null
+  archived: boolean
+  createdAt: string
+  updatedAt: string
+  version: number
+}
+
+export interface ApplicationTimelineItem {
+  id: number
+  applicationId: number
+  fromStatus: ApplicationStatus | null
+  toStatus: ApplicationStatus
+  reason: string | null
+  operatorUserId: number
+  occurredAt: string
+  traceId: string | null
+}
+
 /** 面试状态 */
 export type InterviewStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW'
 

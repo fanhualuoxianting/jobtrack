@@ -25,6 +25,23 @@ export const POSITION_STATUS_TAG: Record<string, 'success' | 'info'> = {
   CLOSED: 'info',
 }
 
+export const APPLICATION_STATUS_TEXT: Record<string, string> = {
+  SAVED: '已收藏',
+  APPLIED: '已投递',
+  ASSESSMENT: '笔试/测评',
+  INTERVIEWING: '面试中',
+  OFFERED: '已获 Offer',
+  ACCEPTED: '已接受',
+  REJECTED: '已拒绝',
+  WITHDRAWN: '已撤回',
+  CLOSED: '已关闭',
+}
+
+export const APPLICATION_STATUS_TAG: Record<string, 'info' | 'primary' | 'warning' | 'success' | 'danger'> = {
+  SAVED: 'info', APPLIED: 'primary', ASSESSMENT: 'warning', INTERVIEWING: 'warning',
+  OFFERED: 'success', ACCEPTED: 'success', REJECTED: 'danger', WITHDRAWN: 'info', CLOSED: 'info',
+}
+
 export const SALARY_UNIT_TEXT: Record<string, string> = {
   DAY: '元/天',
   MONTH: '元/月',
