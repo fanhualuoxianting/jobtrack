@@ -43,11 +43,16 @@ public class ApplicationStateMachine {
     public ApplicationTransitionRule requireAllowed(ApplicationStatus from, ApplicationStatus to, String reason) {
         ApplicationTransitionRule rule = rule(from, to);
         if (rule == null) {
+            if (from != null && from.isTerminal()) {
+                throw new BusinessException(ErrorCode.APPLICATION_INVALID_STATUS_TRANSITION.getCode(),
+                        "终态本身不允许继续流转");
+            }
             throw new BusinessException(ErrorCode.APPLICATION_INVALID_STATUS_TRANSITION.getCode(),
                     "不允许从 " + from + " 流转到 " + to);
         }
         if (rule.requiresReason() && (reason == null || reason.isBlank())) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR.getCode(), "该状态流转必须填写原因");
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR.getCode(),
+                    "流转进入 " + to + " 等终态时要求填写原因");
         }
         return rule;
     }

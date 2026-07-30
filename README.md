@@ -18,6 +18,18 @@ cp .env.example .env
 docker compose up -d mysql redis
 ```
 
+### 开发数据重置
+
+以下命令只针对当前 Docker Compose 开发环境，会删除 `jobtrack` 的 MySQL 与 Redis
+volume，并在下次启动时重新执行 Flyway 迁移和演示数据脚本；不要在生产环境执行：
+
+```powershell
+docker compose down -v
+docker compose up -d
+```
+
+也可以执行仓库内的 `scripts/reset-dev-data.ps1`，脚本会再次确认删除范围。
+
 ### 2. 后端
 
 ```bash
@@ -54,7 +66,7 @@ npm run dev           # 默认代理 /api 到 http://localhost:8082
 
 演示密码以 BCrypt 哈希存库，由 Flyway 的 `V2__insert_demo_data.sql` 迁移写入。
 
-## 当前进度（阶段 2 完成）
+## 当前进度（阶段 5 收尾完成，阶段 6 开始）
 
 - [x] 阶段 1：工程骨架（前后端工程、Docker Compose、统一响应、全局异常、TraceId）
 - [x] 阶段 2：认证与会话
@@ -67,7 +79,10 @@ npm run dev           # 默认代理 /api 到 http://localhost:8082
   - 审计日志（jt_audit_log 异步落库，失败不影响主业务）
   - Redis 快速撤销标记 + Redis 故障降级查库；登录限流 Redis 故障降级内存计数
   - 前端：登录/注册页、路由守卫（会话恢复）、Axios 单例刷新队列、安全设置页
-- [ ] 阶段 3 起：公司与岗位、简历、投递、面试提醒、统计看板
+- [x] 阶段 3：公司与岗位、简历管理
+- [x] 阶段 4：简历文件安全与事务补偿
+- [x] 阶段 5：投递生命周期、状态机、乐观锁、幂等、归档与前端页面
+- [ ] 阶段 6：多轮面试、数据库提醒、定时扫描、通知中心与 SSE
 
 ## 测试
 

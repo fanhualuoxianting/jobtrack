@@ -145,6 +145,72 @@ class ApplicationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("进入终态必须填写原因，终态本身不允许继续流转")
+    void terminalReasonAndTerminalCannotContinue() throws Exception {
+        long companyId = createCompany(tokenA, "终态公司-" + suffix);
+        long positionId = createPosition(tokenA, companyId, "终态岗位-" + suffix);
+        long appId = body(createApplication(tokenA, companyId, positionId)).at("/data/id").asLong();
+
+        mockMvc.perform(post("/api/v1/applications/" + appId + "/transitions")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"APPLIED\",\"expectedVersion\":0,"
+                                + "\"idempotencyKey\":\"terminal-apply-" + suffix + "\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/applications/" + appId + "/transitions")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"REJECTED\",\"expectedVersion\":1,"
+                                + "\"idempotencyKey\":\"terminal-reject-missing-" + suffix + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("流转进入 REJECTED 等终态时要求填写原因"));
+
+        mockMvc.perform(post("/api/v1/applications/" + appId + "/transitions")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"REJECTED\",\"reason\":\"岗位已关闭\","
+                                + "\"expectedVersion\":1,\"idempotencyKey\":\"terminal-reject-" + suffix + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+
+        mockMvc.perform(post("/api/v1/applications/" + appId + "/transitions")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetStatus\":\"APPLIED\",\"expectedVersion\":2,"
+                                + "\"idempotencyKey\":\"terminal-after-" + suffix + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("终态本身不允许继续流转"));
+
+        assertEquals(3, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jt_application_status_log WHERE application_id=?", Long.class, appId));
+    }
+
+    @Test
+    @DisplayName("创建投递时引用其他用户简历返回 404")
+    void resumeOwnershipIsNotFound() throws Exception {
+        long companyId = createCompany(tokenA, "简历归属公司-" + suffix);
+        long positionId = createPosition(tokenA, companyId, "简历归属岗位-" + suffix);
+        Long otherUserId = jdbcTemplate.queryForObject(
+                "SELECT id FROM jt_user WHERE username=?", Long.class, "bb_" + suffix);
+        jdbcTemplate.update("INSERT INTO jt_resume "
+                        + "(user_id,version_name,original_file_name,storage_key,mime_type,file_size,sha256) "
+                        + "VALUES (?,?,?,?,?,?,?)",
+                otherUserId, "他人简历", "resume.pdf", "test/other-resume.pdf",
+                "application/pdf", 10L, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        Long resumeId = jdbcTemplate.queryForObject(
+                "SELECT id FROM jt_resume WHERE user_id=? ORDER BY id DESC LIMIT 1", Long.class, otherUserId);
+
+        mockMvc.perform(post("/api/v1/applications")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"companyId\":" + companyId + ",\"positionId\":" + positionId
+                                + ",\"resumeId\":" + resumeId + "}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
     @DisplayName("版本冲突与并发流转：两个线程只有一个成功")
     void optimisticLockConcurrentTransition() throws Exception {
         long companyId = createCompany(tokenA, "并发公司-" + suffix);
