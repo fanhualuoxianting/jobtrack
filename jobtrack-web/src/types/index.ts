@@ -75,3 +75,78 @@ export interface SessionInfo {
   expiresAt: string
   current: boolean
 }
+
+/** 公司列表项 */
+export interface CompanyListItem {
+  id: number
+  name: string
+  shortName: string | null
+  industry: string | null
+  scale: string | null
+  city: string | null
+  positionCount: number
+  applicationCount: number
+  updatedAt: string
+}
+
+/** 公司详情 */
+export interface CompanyDetail {
+  id: number
+  name: string
+  shortName: string | null
+  industry: string | null
+  scale: string | null
+  city: string | null
+  website: string | null
+  description: string | null
+  createdAt: string
+  updatedAt: string
+  version: number
+}
+
+/** 公司下拉选项 */
+export interface CompanyOption {
+  id: number
+  name: string
+}
+
+/** 岗位列表项 */
+export interface PositionListItem {
+  id: number
+  companyId: number
+  companyName: string | null
+  title: string
+  department: string | null
+  city: string | null
+  workType: WorkType
+  workplaceType: WorkplaceType
+  salaryMin: number | null
+  salaryMax: number | null
+  salaryUnit: 'DAY' | 'MONTH' | 'YEAR' | null
+  currency: string
+  source: string | null
+  status: 'OPEN' | 'CLOSED'
+  deadlineAt: string | null
+  updatedAt: string
+}
+
+/** 岗位详情 */
+export interface PositionDetail extends PositionListItem {
+  sourceUrl: string | null
+  description: string | null
+  requirements: string | null
+  publishedAt: string | null
+  createdAt: string
+  version: number
+}
+
+/** 岗位下拉选项 */
+export interface PositionOption {
+  id: number
+  companyId: number
+  title: string
+  city: string | null
+}
+
+export type WorkType = 'INTERNSHIP' | 'FULL_TIME' | 'PART_TIME'
+export type WorkplaceType = 'ONSITE' | 'REMOTE' | 'HYBRID'

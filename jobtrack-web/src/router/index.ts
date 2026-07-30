@@ -27,6 +27,18 @@ const routes: RouteRecordRaw[] = [
         meta: { requiresAuth: true, title: '首页' },
       },
       {
+        path: 'companies',
+        name: 'Companies',
+        component: () => import('@/views/companies/CompanyListView.vue'),
+        meta: { requiresAuth: true, title: '公司管理' },
+      },
+      {
+        path: 'positions',
+        name: 'Positions',
+        component: () => import('@/views/positions/PositionListView.vue'),
+        meta: { requiresAuth: true, title: '岗位管理' },
+      },
+      {
         path: 'settings/security',
         name: 'SecuritySettings',
         component: () => import('@/views/settings/SecurityView.vue'),

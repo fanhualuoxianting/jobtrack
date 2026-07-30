@@ -11,6 +11,8 @@
           class="nav-menu"
         >
           <el-menu-item index="/dashboard">首页</el-menu-item>
+          <el-menu-item index="/companies">公司</el-menu-item>
+          <el-menu-item index="/positions">岗位</el-menu-item>
         </el-menu>
       </div>
       <div class="header-right">
