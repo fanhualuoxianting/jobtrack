@@ -8,6 +8,7 @@ import com.fanhua.jobtrack.common.exception.ConflictException;
 import com.fanhua.jobtrack.common.exception.NotFoundException;
 import com.fanhua.jobtrack.infrastructure.audit.AuditAction;
 import com.fanhua.jobtrack.infrastructure.audit.AuditLogService;
+import com.fanhua.jobtrack.module.dashboard.service.DashboardCacheInvalidation;
 import com.fanhua.jobtrack.module.company.dto.CompanyQueryRequest;
 import com.fanhua.jobtrack.module.company.dto.CompanyUpsertRequest;
 import com.fanhua.jobtrack.module.company.entity.Company;
@@ -35,10 +36,13 @@ public class CompanyServiceImpl implements CompanyService {
 
     private final CompanyMapper companyMapper;
     private final AuditLogService auditLogService;
+    private final DashboardCacheInvalidation dashboardCacheInvalidation;
 
-    public CompanyServiceImpl(CompanyMapper companyMapper, AuditLogService auditLogService) {
+    public CompanyServiceImpl(CompanyMapper companyMapper, AuditLogService auditLogService,
+                              DashboardCacheInvalidation dashboardCacheInvalidation) {
         this.companyMapper = companyMapper;
         this.auditLogService = auditLogService;
+        this.dashboardCacheInvalidation = dashboardCacheInvalidation;
     }
 
     @Override
@@ -89,6 +93,7 @@ public class CompanyServiceImpl implements CompanyService {
         company.setUserId(userId);
         applyUpsert(company, request, normalizedName);
         companyMapper.insert(company);
+        dashboardCacheInvalidation.afterCommit(userId);
 
         audit("COMPANY_CREATE", userId, company.getId(), "创建公司");
         return CompanyDetailVO.from(company);
@@ -112,6 +117,7 @@ public class CompanyServiceImpl implements CompanyService {
             throw new ConflictException(ErrorCode.OPTIMISTIC_LOCK_CONFLICT.getCode(),
                     "记录已被其他请求修改，请刷新后重试");
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         audit("COMPANY_UPDATE", userId, id, "修改公司");
         return CompanyDetailVO.from(company);
     }
@@ -132,6 +138,7 @@ public class CompanyServiceImpl implements CompanyService {
         if (affected == 0) {
             throw new NotFoundException("公司不存在");
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         audit("COMPANY_DELETE", userId, id, "删除公司");
     }
 

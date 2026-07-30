@@ -8,6 +8,7 @@ import com.fanhua.jobtrack.common.exception.BusinessException;
 import com.fanhua.jobtrack.common.exception.ConflictException;
 import com.fanhua.jobtrack.common.exception.NotFoundException;
 import com.fanhua.jobtrack.infrastructure.audit.AuditLogService;
+import com.fanhua.jobtrack.module.dashboard.service.DashboardCacheInvalidation;
 import com.fanhua.jobtrack.module.application.domain.ApplicationStatus;
 import com.fanhua.jobtrack.module.application.dto.ApplicationTransitionRequest;
 import com.fanhua.jobtrack.module.application.entity.JobApplication;
@@ -49,15 +50,17 @@ public class InterviewServiceImpl implements InterviewService {
     private final ApplicationService applicationService;
     private final ReminderService reminderService;
     private final AuditLogService auditLogService;
+    private final DashboardCacheInvalidation dashboardCacheInvalidation;
 
     public InterviewServiceImpl(InterviewMapper interviewMapper, JobApplicationMapper applicationMapper,
                                 ApplicationService applicationService, ReminderService reminderService,
-                                AuditLogService auditLogService) {
+                                AuditLogService auditLogService, DashboardCacheInvalidation dashboardCacheInvalidation) {
         this.interviewMapper = interviewMapper;
         this.applicationMapper = applicationMapper;
         this.applicationService = applicationService;
         this.reminderService = reminderService;
         this.auditLogService = auditLogService;
+        this.dashboardCacheInvalidation = dashboardCacheInvalidation;
     }
 
     @Override
@@ -109,6 +112,7 @@ public class InterviewServiceImpl implements InterviewService {
             applicationService.transition(userId, application.getId(), transition);
         }
         reminderService.rebuildForInterview(userId, interview);
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("INTERVIEW_CREATE", userId, "INTERVIEW",
                 String.valueOf(interview.getId()), true, "创建面试", null, null, MDC.get("traceId"));
         return toVO(interviewMapper.selectOwned(userId, interview.getId()));
@@ -156,6 +160,7 @@ public class InterviewServiceImpl implements InterviewService {
         if (affected == 0) throw updateConflict(userId, id, request.getVersion());
         Interview updated = interviewMapper.selectOwned(userId, id);
         reminderService.rebuildForInterview(userId, updated);
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("INTERVIEW_UPDATE", userId, "INTERVIEW", String.valueOf(id), true,
                 "修改面试", null, null, MDC.get("traceId"));
         return toVO(updated);
@@ -168,6 +173,7 @@ public class InterviewServiceImpl implements InterviewService {
         int affected = interviewMapper.cancel(userId, id, request.getVersion(), trim(request.getReason()));
         if (affected == 0) throw updateConflict(userId, id, request.getVersion());
         reminderService.cancelPendingForInterview(userId, id);
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("INTERVIEW_CANCEL", userId, "INTERVIEW", String.valueOf(id), true,
                 "取消面试", null, null, MDC.get("traceId"));
         return toVO(interviewMapper.selectOwned(userId, id));
@@ -181,6 +187,7 @@ public class InterviewServiceImpl implements InterviewService {
                 trim(request.getFeedback()));
         if (affected == 0) throw updateConflict(userId, id, request.getVersion());
         reminderService.cancelPendingForInterview(userId, id);
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("INTERVIEW_COMPLETE", userId, "INTERVIEW", String.valueOf(id), true,
                 "完成面试", null, null, MDC.get("traceId"));
         return toVO(interviewMapper.selectOwned(userId, id));
@@ -192,6 +199,7 @@ public class InterviewServiceImpl implements InterviewService {
         ownedInterview(userId, id);
         if (interviewMapper.softDelete(userId, id, version) == 0) throw updateConflict(userId, id, version);
         reminderService.cancelPendingForInterview(userId, id);
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("INTERVIEW_DELETE", userId, "INTERVIEW", String.valueOf(id), true,
                 "删除面试", null, null, MDC.get("traceId"));
     }

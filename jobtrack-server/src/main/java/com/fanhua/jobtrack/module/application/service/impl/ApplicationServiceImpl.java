@@ -8,6 +8,7 @@ import com.fanhua.jobtrack.common.exception.BusinessException;
 import com.fanhua.jobtrack.common.exception.ConflictException;
 import com.fanhua.jobtrack.common.exception.NotFoundException;
 import com.fanhua.jobtrack.infrastructure.audit.AuditLogService;
+import com.fanhua.jobtrack.module.dashboard.service.DashboardCacheInvalidation;
 import com.fanhua.jobtrack.module.application.domain.ApplicationStateMachine;
 import com.fanhua.jobtrack.module.application.domain.ApplicationStatus;
 import com.fanhua.jobtrack.module.application.domain.ApplicationStatusChangedEvent;
@@ -63,6 +64,7 @@ public class ApplicationServiceImpl implements ApplicationService {
     private final ApplicationStateMachine stateMachine;
     private final ApplicationEventPublisher eventPublisher;
     private final AuditLogService auditLogService;
+    private final DashboardCacheInvalidation dashboardCacheInvalidation;
 
     public ApplicationServiceImpl(JobApplicationMapper applicationMapper,
                                   ApplicationStatusLogMapper statusLogMapper,
@@ -72,7 +74,8 @@ public class ApplicationServiceImpl implements ApplicationService {
                                   ResumeMapper resumeMapper,
                                   ApplicationStateMachine stateMachine,
                                   ApplicationEventPublisher eventPublisher,
-                                  AuditLogService auditLogService) {
+                                  AuditLogService auditLogService,
+                                  DashboardCacheInvalidation dashboardCacheInvalidation) {
         this.applicationMapper = applicationMapper;
         this.statusLogMapper = statusLogMapper;
         this.idempotencyMapper = idempotencyMapper;
@@ -82,6 +85,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         this.stateMachine = stateMachine;
         this.eventPublisher = eventPublisher;
         this.auditLogService = auditLogService;
+        this.dashboardCacheInvalidation = dashboardCacheInvalidation;
     }
 
     @Override
@@ -140,6 +144,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         }
 
         insertStatusLog(userId, application.getId(), null, ApplicationStatus.SAVED, null);
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("APPLICATION_CREATE", userId, "APPLICATION",
                 String.valueOf(application.getId()), true, "创建投递", null, null, MDC.get("traceId"));
         return detail(userId, application.getId());
@@ -202,6 +207,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         if (affected == 0) {
             throw updateConflictOrNotFound(userId, id);
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("APPLICATION_UPDATE", userId, "APPLICATION", String.valueOf(id), true,
                 "修改投递信息", null, null, MDC.get("traceId"));
         return detail(userId, id);
@@ -257,6 +263,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         if (!rule.triggersBusinessEvent()) {
             throw new IllegalStateException("状态规则未声明业务事件");
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         return detail(userId, id);
     }
 
@@ -281,6 +288,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         if (applicationMapper.updateArchived(userId, id, current.getVersion(), 1) == 0) {
             throw updateConflictOrNotFound(userId, id);
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("APPLICATION_ARCHIVE", userId, "APPLICATION", String.valueOf(id), true,
                 "归档投递", null, null, MDC.get("traceId"));
         return detail(userId, id);
@@ -296,6 +304,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         if (applicationMapper.updateArchived(userId, id, current.getVersion(), 0) == 0) {
             throw updateConflictOrNotFound(userId, id);
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("APPLICATION_RESTORE", userId, "APPLICATION", String.valueOf(id), true,
                 "恢复投递", null, null, MDC.get("traceId"));
         return detail(userId, id);
@@ -312,6 +321,7 @@ public class ApplicationServiceImpl implements ApplicationService {
         if (applicationMapper.softDeleteSaved(userId, id, current.getVersion()) == 0) {
             throw updateConflictOrNotFound(userId, id);
         }
+        dashboardCacheInvalidation.afterCommit(userId);
         auditLogService.recordAfterCommit("APPLICATION_DELETE", userId, "APPLICATION", String.valueOf(id), true,
                 "删除草稿投递（保留状态历史）", null, null, MDC.get("traceId"));
     }
