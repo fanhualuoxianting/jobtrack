@@ -30,7 +30,8 @@ public interface ReminderMapper {
             + "ORDER BY scheduled_at ASC, id ASC LIMIT #{limit}")
     List<Long> selectDueIds(@Param("limit") int limit);
 
-    @Update("UPDATE jt_reminder SET status='READY', updated_at=UTC_TIMESTAMP() WHERE id=#{id} AND status='PENDING' AND deleted=0")
+    @Update("UPDATE jt_reminder SET status='READY', updated_at=UTC_TIMESTAMP() WHERE id=#{id} "
+            + "AND status='PENDING' AND scheduled_at <= UTC_TIMESTAMP() AND deleted=0")
     int claim(@Param("id") Long id);
 
     @Select("SELECT * FROM jt_reminder WHERE id=#{id} AND status='READY' AND deleted=0")

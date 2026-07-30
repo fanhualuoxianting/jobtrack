@@ -3,6 +3,7 @@ package com.fanhua.jobtrack.module.interview;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fanhua.jobtrack.AbstractIntegrationTest;
+import com.fanhua.jobtrack.module.application.service.ApplicationService;
 import com.fanhua.jobtrack.module.reminder.service.ReminderService;
 import com.fanhua.jobtrack.module.reminder.stream.NotificationStreamService;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,6 +28,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -37,6 +43,7 @@ class InterviewIntegrationTest extends AbstractIntegrationTest {
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private ReminderService reminderService;
     @Autowired private NotificationStreamService streamService;
+    @SpyBean private ApplicationService applicationService;
 
     private String suffix;
     private String tokenA;
@@ -97,6 +104,49 @@ class InterviewIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("归档投递不允许面试，过期提醒不生成且临界时间只生成有效提醒")
+    void archivedAndExpiredReminderRules() throws Exception {
+        long archivedAppId = createAppliedApplication(tokenA);
+        mockMvc.perform(post("/api/v1/applications/" + archivedAppId + "/archive")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/interviews").header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("applicationId", archivedAppId,
+                                "roundNumber", 1, "roundName", "归档面试", "interviewType", "VIDEO",
+                                "scheduledStartAt", OffsetDateTime.now(ZoneOffset.UTC).plusDays(2),
+                                "scheduledEndAt", OffsetDateTime.now(ZoneOffset.UTC).plusDays(2).plusHours(1), "timezone", "UTC"))))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INTERVIEW_NOT_ALLOWED"));
+
+        long thresholdAppId = createAppliedApplication(tokenA);
+        long thresholdInterviewId = createInterview(tokenA, thresholdAppId, 1,
+                OffsetDateTime.now(ZoneOffset.UTC).plusHours(12));
+        assertEquals(1, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jt_reminder WHERE interview_id=? AND status='PENDING'", Long.class, thresholdInterviewId));
+
+        long expiredAppId = createAppliedApplication(tokenA);
+        long expiredInterviewId = createInterview(tokenA, expiredAppId, 1,
+                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(30));
+        assertEquals(0, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM jt_reminder WHERE interview_id=?", Long.class, expiredInterviewId));
+    }
+
+    @Test
+    @DisplayName("America/New_York 夏令时跨偏移展示保持真实瞬时顺序")
+    void newYorkDstKeepsInstantAndDisplayOffset() throws Exception {
+        long appId = createAppliedApplication(tokenA);
+        OffsetDateTime start = OffsetDateTime.parse("2026-11-01T01:30:00-04:00");
+        OffsetDateTime end = OffsetDateTime.parse("2026-11-01T01:30:00-05:00");
+        mockMvc.perform(post("/api/v1/interviews").header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("applicationId", appId,
+                                "roundNumber", 1, "roundName", "纽约夏令时面试", "interviewType", "VIDEO",
+                                "scheduledStartAt", start, "scheduledEndAt", end,
+                                "timezone", "America/New_York"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.scheduledStartAt").value(org.hamcrest.Matchers.containsString("-04:00")))
+                .andExpect(jsonPath("$.data.scheduledEndAt").value(org.hamcrest.Matchers.containsString("-05:00")));
+    }
+
+    @Test
     @DisplayName("修改面试使用乐观锁并按新时间重建未发送提醒")
     void updateInterviewOptimisticLockAndRebuildsReminders() throws Exception {
         long appId = createAppliedApplication(tokenA);
@@ -151,6 +201,15 @@ class InterviewIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isNotFound());
         mockMvc.perform(get("/api/v1/interviews/by-application/" + appId).header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isNotFound());
+        mockMvc.perform(patch("/api/v1/interviews/" + interviewId).header("Authorization", "Bearer " + tokenB)
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("version", 0, "location", "越权修改"))))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/interviews/" + interviewId + "/cancel").header("Authorization", "Bearer " + tokenB)
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("version", 0, "reason", "越权取消"))))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/interviews/" + interviewId + "/complete").header("Authorization", "Bearer " + tokenB)
+                        .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("version", 0, "result", "PASS"))))
+                .andExpect(status().isNotFound());
         transition(tokenA, appId, "CLOSED", 2, "关闭岗位");
         mockMvc.perform(post("/api/v1/interviews").header("Authorization", "Bearer " + tokenA)
                         .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("applicationId", appId,
@@ -158,6 +217,30 @@ class InterviewIntegrationTest extends AbstractIntegrationTest {
                                 "scheduledStartAt", OffsetDateTime.now(ZoneOffset.UTC).plusDays(4),
                                 "scheduledEndAt", OffsetDateTime.now(ZoneOffset.UTC).plusDays(4).plusHours(1), "timezone", "UTC"))))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INTERVIEW_NOT_ALLOWED"));
+    }
+
+    @Test
+    @DisplayName("投递自动流转失败时面试和提醒随事务回滚")
+    void failedAutoTransitionRollsBackInterviewAndReminders() throws Exception {
+        long appId = createAppliedApplication(tokenA);
+        long userId = jdbcTemplate.queryForObject("SELECT id FROM jt_user WHERE username LIKE ?", Long.class, "iv_a_" + suffix);
+        doThrow(new IllegalStateException("forced transition failure"))
+                .when(applicationService).transition(eq(userId), eq(appId), any());
+        try {
+            mockMvc.perform(post("/api/v1/interviews").header("Authorization", "Bearer " + tokenA)
+                            .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("applicationId", appId,
+                                    "roundNumber", 1, "roundName", "回滚面试", "interviewType", "VIDEO",
+                                    "scheduledStartAt", OffsetDateTime.now(ZoneOffset.UTC).plusDays(2),
+                                    "scheduledEndAt", OffsetDateTime.now(ZoneOffset.UTC).plusDays(2).plusHours(1), "timezone", "UTC"))))
+                    .andExpect(status().is5xxServerError());
+            assertEquals(0, jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM jt_interview WHERE application_id=?", Long.class, appId));
+            assertEquals(0, jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM jt_reminder WHERE application_id=?", Long.class, appId));
+            assertEquals("APPLIED", applicationStatus(appId));
+        } finally {
+            reset(applicationService);
+        }
     }
 
     @Test
@@ -214,8 +297,9 @@ class InterviewIntegrationTest extends AbstractIntegrationTest {
     }
 
     private long createAppliedApplication(String token) throws Exception {
-        long companyId = createCompany(token, "面试公司-" + suffix);
-        long positionId = createPosition(token, companyId, "面试岗位-" + suffix);
+        String uniqueName = "面试实体-" + suffix + "-" + System.nanoTime();
+        long companyId = createCompany(token, uniqueName);
+        long positionId = createPosition(token, companyId, uniqueName);
         long appId = body(mockMvc.perform(post("/api/v1/applications").header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content(json(Map.of("companyId", companyId, "positionId", positionId))))
                 .andExpect(status().isCreated()).andReturn()).at("/data/id").asLong();
