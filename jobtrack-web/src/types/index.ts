@@ -65,10 +65,49 @@ export interface ApplicationTimelineItem {
 export type InterviewStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW'
 
 /** 面试形式 */
-export type InterviewType = 'PHONE' | 'ONLINE' | 'ONSITE' | 'WRITTEN' | 'OTHER'
+export type InterviewType = 'PHONE' | 'VIDEO' | 'ONSITE' | 'WRITTEN' | 'OTHER'
 
 /** 提醒状态 */
-export type ReminderStatus = 'PENDING' | 'SENT' | 'FAILED' | 'CANCELLED'
+export type ReminderStatus = 'PENDING' | 'READY' | 'SENT' | 'FAILED' | 'CANCELLED'
+
+export interface InterviewInfo {
+  id: number
+  applicationId: number
+  roundNumber: number
+  roundName: string
+  interviewType: InterviewType
+  status: InterviewStatus
+  scheduledStartAt: string
+  scheduledEndAt: string | null
+  timezone: string
+  location: string | null
+  meetingUrl: string | null
+  interviewer: string | null
+  contactInfo: string | null
+  notes: string | null
+  result: string | null
+  feedback: string | null
+  cancelReason: string | null
+  createdAt: string | null
+  updatedAt: string | null
+  version: number
+}
+
+export interface ReminderInfo {
+  id: number
+  interviewId: number | null
+  applicationId: number | null
+  reminderType: string | null
+  status: ReminderStatus
+  title: string
+  content: string | null
+  idempotencyKey: string | null
+  scheduledAt: string | null
+  sentAt: string | null
+  readAt: string | null
+  cancelledAt: string | null
+  createdAt: string | null
+}
 
 /** 用户信息 */
 export interface UserInfo {
