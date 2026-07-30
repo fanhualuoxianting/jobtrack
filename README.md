@@ -1,133 +1,132 @@
-# JobTrack 实习投递与面试管理平台
+# JobTrack
 
-面向高校学生求职场景的前后端分离管理平台，支持公司与岗位管理、简历版本追踪、投递状态流转、多轮面试日程、站内提醒和求职数据统计。
+JobTrack 是面向高校学生求职场景的前后端分离投递管理平台，覆盖公司与岗位、简历版本、投递状态流转、多轮面试、站内提醒、SSE 通知和求职数据统计。
 
 ## 技术栈
 
-- 后端：Java 21、Spring Boot 3.5、Spring Security（JWT + Refresh Token Rotation）、MyBatis-Plus、Flyway、MySQL 8.4、Redis 8
-- 前端：Vue 3、TypeScript（strict）、Vite、Element Plus（按需引入）、Pinia、Vitest
-- 部署：Docker Compose、Nginx
+- 后端：Java 21、Spring Boot 3.5、Spring Security、JWT、MyBatis-Plus、Flyway、MySQL 8.4、Redis 8
+- 前端：Vue 3、TypeScript strict、Vite、Element Plus、Pinia、ECharts、Vitest
+- 交付：Docker 多阶段构建、Docker Compose、Nginx、GitHub Actions
 
-## 快速启动
+## 快速开始：开发模式
 
-### 1. 基础设施
-
-```bash
-cp .env.example .env
-# 本机 3306/6379 被占用时，.env 中使用 MYSQL_PORT=3307、REDIS_PORT=6380
-docker compose up -d mysql redis
-```
-
-### 开发数据重置
-
-以下命令只针对当前 Docker Compose 开发环境，会删除 `jobtrack` 的 MySQL 与 Redis
-volume，并在下次启动时重新执行 Flyway 迁移和演示数据脚本；不要在生产环境执行：
+要求：Java 21、Maven、Node 22 LTS、Docker Desktop。
 
 ```powershell
-docker compose down -v
-docker compose up -d
-```
+Copy-Item .env.example .env
+docker compose up -d mysql redis
 
-也可以执行仓库内的 `scripts/reset-dev-data.ps1`，脚本会再次确认删除范围。
-
-### 2. 后端
-
-```bash
+# 终端 1
 cd jobtrack-server
-mvn clean test        # 自动化测试（Testcontainers 需要本机 Docker 运行中）
-mvn spring-boot:run   # 首次启动自动执行 Flyway 建表与演示数据迁移
-```
+mvn spring-boot:run
 
-数据库结构由 `jobtrack-server/src/main/resources/db/migration` 中的 Flyway 脚本管理，
-dev 环境同时加载 `db/demo` 下的演示数据；`sql/` 目录仅保留为历史参考。
-
-### 3. 前端
-
-```bash
+# 终端 2
 cd jobtrack-web
-npm install
-npm run dev           # 默认代理 /api 到 http://localhost:8082
+npm ci
+npm run dev
 ```
 
-后端运行在其他端口时，通过 `VITE_PROXY_TARGET` 覆盖代理目标。
+默认访问：前端 <http://localhost:5173>，后端健康检查 <http://localhost:8082/actuator/health>，Swagger <http://localhost:8082/swagger-ui/index.html>。本机端口冲突时，在 `.env` 中调整 `MYSQL_PORT`、`REDIS_PORT`、`SERVER_PORT` 和 `VITE_PROXY_TARGET`。
 
-### 4. 访问
+开发 profile 会加载 `db/migration` 和 `db/demo`；生产 profile 只加载正式迁移。开发数据重置是破坏性操作，只针对当前开发 Compose：
 
-- 前端：http://localhost:5173
-- 后端健康检查：http://localhost:8082/actuator/health
-- Swagger：http://localhost:8082/swagger-ui/index.html
+```powershell
+./scripts/reset-dev-data.ps1
+```
+
+脚本要求输入 `RESET-DEV-DATA` 或显式传 `-Force`，不会删除项目文件。
+
+## 完整 Docker 部署
+
+```powershell
+Copy-Item .env.production.example .env.production
+# 编辑 .env.production，替换全部 CHANGE_ME 值；JWT_SECRET 至少 32 字节
+# 本地演示默认使用 http://localhost:8080 和 JOBTRACK_COOKIE_SECURE=false
+# 正式部署请改为真实 HTTPS Origin，并将 JOBTRACK_COOKIE_SECURE=true
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+访问 <http://localhost:8080>。生产 Compose 包含 MySQL、Redis、Spring Boot Server、Nginx Web；只有 Web 暴露宿主机端口，数据库、Redis 和 Server 通过内部网络连接。上传文件使用独立 volume。重启验证：
+
+```powershell
+docker compose --env-file .env.production -f docker-compose.prod.yml restart
+```
+
+生产默认不插入演示数据，Swagger 默认关闭；设置 `SPRINGDOC_ENABLED=true` 后可临时开启。`JOBTRACK_FRONTEND_ORIGIN` 必须填写包含协议和端口的完整 Origin，例如本地演示使用 `http://localhost:8080`。不要把 `.env.production` 或真实密钥提交到 Git。
 
 ## 演示账号
 
-```
-邮箱：demo@jobtrack.local
+仅限开发环境：
+
+```text
+账号：demo@jobtrack.local
 密码：JobTrack@123456
 ```
 
-演示密码以 BCrypt 哈希存库，由 Flyway 的 `V2__insert_demo_data.sql` 迁移写入。
+密码由开发演示迁移以当前 BCrypt 配置写入。生产环境不会创建该账号。
 
-## 当前进度（阶段 6 收尾完成，阶段 7 开始）
+## 测试与 Smoke
 
-- [x] 阶段 1：工程骨架（前后端工程、Docker Compose、统一响应、全局异常、TraceId）
-- [x] 阶段 2：认证与会话
-  - 注册（BCrypt、用户名/邮箱 409 冲突、自动创建用户设置，注册后重新登录）
-  - 登录（用户名或邮箱、统一失败提示不暴露账号存在、连续失败临时锁定 423）
-  - Access Token（JWT HS256，30 分钟，claims: sub/userId/sessionId/roles/jti）
-  - Refresh Token Rotation（HttpOnly Cookie + SameSite=Strict；只存 SHA-256 哈希；
-    原子轮换；旧令牌重放判定攻击并撤销会话、写安全审计日志）
-  - 多设备会话（会话列表、注销指定设备、注销其他设备、注销全部设备）
-  - 审计日志（jt_audit_log 异步落库，失败不影响主业务）
-  - Redis 快速撤销标记 + Redis 故障降级查库；登录限流 Redis 故障降级内存计数
-  - 前端：登录/注册页、路由守卫（会话恢复）、Axios 单例刷新队列、安全设置页
-- [x] 阶段 3：公司与岗位、简历管理
-- [x] 阶段 4：简历文件安全与事务补偿
-- [x] 阶段 5：投递生命周期、状态机、乐观锁、幂等、归档与前端页面
-- [x] 阶段 6：多轮面试、数据库提醒、定时扫描、通知中心与 SSE
-- [ ] 阶段 7：统计看板、SQL 聚合、Redis 缓存与 ECharts 可视化
+```powershell
+# 后端：Testcontainers 启动真实 MySQL/Redis
+cd jobtrack-server; mvn clean test
 
-阶段 6 的测试清单、状态语义、抢占 SQL 和 smoke 数据说明见
-[`docs/stage6-closure.md`](docs/stage6-closure.md)。
+# 前端
+cd ..\jobtrack-web
+npm ci
+npm run type-check
+npm run test
+npm run build
 
-## 测试
-
-```bash
-# 后端（Testcontainers 启动真实 MySQL/Redis，需 Docker 可用）
-cd jobtrack-server && mvn test
-
-# 前端（Vitest：Axios 刷新队列）
-cd jobtrack-web && npm run test
+# 真实环境 Smoke；默认使用唯一用户，不删除已有数据
+cd ..
+./scripts/smoke-test.ps1 -BaseUrl http://localhost:8080
 ```
 
-## 项目结构
+Smoke 支持 `SMOKE_BASE_URL`、`SMOKE_ACCOUNT`、`SMOKE_PASSWORD`，失败返回非零退出码且不输出 Token/密码。
 
-```
+## 核心设计
+
+- SQL 层 `user_id` 隔离 + 服务层归属校验
+- JWT Access Token + Refresh Token Rotation
+- 投递状态机、乐观锁、数据库幂等
+- 简历真实结构校验、路径穿越防护、文件事务补偿
+- 面试提醒数据库原子抢占、SSE 实时通知和用户连接上限
+- 基于状态历史的 Dashboard 统计；Redis 用户版本缓存，故障回源 MySQL
+- TraceId、审计日志、Actuator 健康/指标端点和失败降级日志
+
+## 文档
+
+- [系统架构](docs/architecture.md)
+- [数据库与迁移](docs/database.md)
+- [认证与会话](docs/authentication.md)
+- [投递状态机](docs/application-state-machine.md)
+- [文件存储](docs/file-storage.md)
+- [面试、提醒与通知](docs/interview-reminder.md)
+- [Dashboard 指标与缓存](docs/stage7-dashboard.md)
+- [部署说明](docs/deployment.md)
+- [安全基线](docs/security.md)
+- [演示脚本](docs/demo-script.md)
+- [面试追问](docs/interview-notes.md)
+- [简历项目描述](docs/resume-project-description.md)
+- [阶段 6 收尾记录](docs/stage6-closure.md)
+- [截图清单](docs/images/README.md)
+- OpenAPI：开发环境访问 `/swagger-ui/index.html`，生产默认关闭，可通过 `SPRINGDOC_ENABLED=true` 临时开启。
+
+## 目录结构
+
+```text
 jobtrack/
-├── jobtrack-server/     # Spring Boot 后端
-│   └── src/main/resources/db/{migration,demo}/   # Flyway 正式迁移来源
-├── jobtrack-web/        # Vue 3 前端
-├── deploy/              # Docker、Nginx 部署配置
-├── docs/                # 接口、数据库、截图
-├── sql/                 # 历史参考（已被 Flyway 取代）
-├── docker-compose.yml
-├── .env.example
-└── README.md
+├── jobtrack-server/       # Spring Boot 后端、正式/开发 Flyway 迁移
+├── jobtrack-web/           # Vue 3 前端和 Vitest
+├── deploy/nginx.conf       # SPA、API、SSE 代理和安全头
+├── scripts/                # 开发数据重置、真实 Smoke
+├── docs/                   # 架构、部署、指标、演示和面试文档
+├── docker-compose.yml      # 开发 MySQL/Redis
+├── docker-compose.prod.yml # 完整生产拓扑
+└── .github/workflows/ci.yml
 ```
 
-## 关键设计说明
+## 许可证
 
-### 认证与会话
-
-- Access Token 存前端内存，永不落盘；Refresh Token 只在 HttpOnly Cookie 中，
-  JS 无法读取；Cookie 限定 `Path=/api/v1/auth`、`SameSite=Strict`，生产环境开启 `Secure`。
-- Refresh Token 形如 `sessionId.secret`，数据库 `jt_auth_session` 只保存 SHA-256 哈希。
-- 每次刷新执行原子轮换（`UPDATE ... WHERE refresh_token_hash = old`），
-  影响行数为 0 判定为并发或重放；确认为旧令牌重放时撤销整个会话并写安全日志。
-- 会话撤销以数据库为准，Redis 作快速标记；Redis 宕机时降级查库，
-  Access Token 30 分钟短有效期作为最终兜底。
-
-### 安全
-
-- 登录失败不区分"账号不存在"与"密码错误"，错误消息完全一致。
-- 连续失败（默认 10 分钟 5 次）触发 15 分钟临时锁定（HTTP 423）。
-- JWT 密钥仅经 `JWT_SECRET` 环境变量注入；`application-dev.yml` 中的值仅供本地开发。
-- 密码、完整令牌、Cookie 内容不写入任何日志；审计中的账号均脱敏。
+当前仓库未声明开源许可证；如需公开发布，请先补充与项目归属一致的 LICENSE。

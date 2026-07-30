@@ -1,0 +1,94 @@
+name: jobtrack-prod
+
+services:
+  mysql:
+    image: mysql@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?MYSQL_DATABASE is required}
+      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - jobtrack_prod_mysql:/var/lib/mysql
+    networks: [jobtrack-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+
+  redis:
+    image: redis@sha256:8096655e437712b07503796fb64d81359256cfcff0ab29d95a7da72863786efb
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    volumes:
+      - jobtrack_prod_redis:/data
+    networks: [jobtrack-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  server:
+    build:
+      context: ./jobtrack-server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRINGDOC_ENABLED: ${SPRINGDOC_ENABLED:-false}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:?MYSQL_DATABASE is required}
+      DB_USERNAME: ${MYSQL_USER:?MYSQL_USER is required}
+      DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JOBTRACK_FRONTEND_ORIGIN: ${JOBTRACK_FRONTEND_ORIGIN:?JOBTRACK_FRONTEND_ORIGIN is required}
+      JOBTRACK_COOKIE_SECURE: ${JOBTRACK_COOKIE_SECURE:-true}
+      FILE_STORAGE_ROOT: /app/data/uploads
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - jobtrack_prod_uploads:/app/data/uploads
+    networks: [jobtrack-internal]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q 'UP' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 8
+
+  web:
+    build:
+      context: .
+      dockerfile: jobtrack-web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    networks: [jobtrack-internal]
+    depends_on:
+      server:
+        condition: service_healthy
+
+networks:
+  jobtrack-internal:
+    name: jobtrack-internal
+
+volumes:
+  jobtrack_prod_mysql:
+  jobtrack_prod_redis:
+  jobtrack_prod_uploads:

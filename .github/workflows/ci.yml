@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'agent/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Run backend tests with Testcontainers
+        working-directory: jobtrack-server
+        run: mvn -B test
+      - name: Package backend jar
+        working-directory: jobtrack-server
+        run: mvn -B -DskipTests package
+      - name: Upload backend test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: jobtrack-server/target/surefire-reports/
+          if-no-files-found: warn
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.15.0'
+          cache: npm
+          cache-dependency-path: jobtrack-web/package-lock.json
+      - name: Install dependencies
+        working-directory: jobtrack-web
+        run: npm ci
+      - name: Type check
+        working-directory: jobtrack-web
+        run: npm run type-check
+      - name: Unit tests
+        working-directory: jobtrack-web
+        run: npm run test
+      - name: Production build
+        working-directory: jobtrack-web
+        run: npm run build
+      - name: Dependency audit
+        working-directory: jobtrack-web
+        run: npm audit --audit-level=high
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production Compose
+        run: docker compose --env-file .env.production.example -f docker-compose.prod.yml config
+      - name: Build backend image
+        run: docker build -f jobtrack-server/Dockerfile jobtrack-server
+      - name: Build frontend image
+        run: docker build -f jobtrack-web/Dockerfile .
