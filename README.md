@@ -41,6 +41,8 @@ npm run dev
 ```powershell
 Copy-Item .env.production.example .env.production
 # 编辑 .env.production，替换全部 CHANGE_ME 值；JWT_SECRET 至少 32 字节
+# 本地演示默认使用 http://localhost:8080 和 JOBTRACK_COOKIE_SECURE=false
+# 正式部署请改为真实 HTTPS Origin，并将 JOBTRACK_COOKIE_SECURE=true
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
@@ -50,7 +52,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 docker compose --env-file .env.production -f docker-compose.prod.yml restart
 ```
 
-生产默认不插入演示数据，Swagger 默认关闭；不要把 `.env.production` 或真实密钥提交到 Git。
+生产默认不插入演示数据，Swagger 默认关闭；设置 `SPRINGDOC_ENABLED=true` 后可临时开启。`JOBTRACK_FRONTEND_ORIGIN` 必须填写包含协议和端口的完整 Origin，例如本地演示使用 `http://localhost:8080`。不要把 `.env.production` 或真实密钥提交到 Git。
 
 ## 演示账号
 
