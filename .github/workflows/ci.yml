@@ -61,9 +61,23 @@ jobs:
         working-directory: jobtrack-web
         run: npm audit --audit-level=high
 
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan tracked files for common secret patterns
+        shell: bash
+        run: |
+          if git grep -n -I -E 'sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC )?PRIVATE KEY-----'; then
+            echo 'Potential secret detected in tracked files.'
+            exit 1
+          fi
+
   docker:
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    timeout-minutes: 20
+    needs: [backend, frontend, secret-scan]
     steps:
       - uses: actions/checkout@v4
       - name: Validate production Compose
